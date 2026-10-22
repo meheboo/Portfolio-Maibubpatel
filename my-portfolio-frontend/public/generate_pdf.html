@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Resume PDF Generator</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px; background: #111; color: #fff;">
+  <h2>Resume PDF Generator & Validator</h2>
+  <textarea id="output" style="width: 100%; height: 250px; font-family: monospace;"></textarea>
+  <br/><br/>
+  <iframe id="preview" style="width: 100%; height: 500px; border: 1px solid #555;"></iframe>
+
+  <script>
+    function buildResumePDF() {
+      // Content stream commands
+      const streamLines = [
+        "BT",
+        // Name
+        "/F1 22 Tf",
+        "50 740 Td",
+        "(MAIBUB PATEL) Tj",
+        // Subtitle
+        "/F1 11 Tf",
+        "0 -20 Td",
+        "0.2 0.3 0.8 rg",
+        "(BACKEND & FULL STACK DEVELOPER) Tj",
+        "0 0 0 rg",
+        // Contact line
+        "/F2 9 Tf",
+        "0 -16 Td",
+        "(Email: meheboobpatelpatel@gmail.com   |   Phone: +91 96322 61436   |   Location: Bangalore, India) Tj",
+        "0 -13 Td",
+        "(GitHub: github.com/meheboo   |   LinkedIn: linkedin.com/in/maibubpatel-patel-24a358203) Tj",
+        // Divider line
+        "ET",
+        "0.7 0.7 0.7 RG",
+        "1 w",
+        "50 675 m 562 675 l S",
+        "BT",
+        // Section: PROFESSIONAL SUMMARY
+        "/F1 12 Tf",
+        "0.1 0.1 0.4 rg",
+        "50 655 Td",
+        "(PROFESSIONAL SUMMARY) Tj",
+        "0 0 0 rg",
+        "/F2 9.5 Tf",
+        "0 -16 Td",
+        "(Results-driven Backend Developer with strong expertise in Node.js, NestJS, TypeScript, and) Tj",
+        "0 -13 Td",
+        "(PostgreSQL. Experienced in designing scalable RESTful microservices, asynchronous queue workers) Tj",
+        "0 -13 Td",
+        "(with Redis and BullMQ, database sharding, and high-performance full-stack architectures.) Tj",
+        // Section: TECHNICAL SKILLS
+        "/F1 12 Tf",
+        "0.1 0.1 0.4 rg",
+        "0 -25 Td",
+        "(TECHNICAL SKILLS) Tj",
+        "0 0 0 rg",
+        "/F1 9.5 Tf",
+        "0 -16 Td",
+        "(Languages & Core: ) Tj",
+        "/F2 9.5 Tf",
+        "(TypeScript, JavaScript (ES6+), SQL, HTML5, CSS3) Tj",
+        "/F1 9.5 Tf",
+        "0 -14 Td",
+        "(Backend & Frameworks: ) Tj",
+        "/F2 9.5 Tf",
+        "(Node.js, NestJS, Express.js, REST APIs, Microservices, BullMQ) Tj",
+        "/F1 9.5 Tf",
+        "0 -14 Td",
+        "(Databases & Caching: ) Tj",
+        "/F2 9.5 Tf",
+        "(PostgreSQL, Prisma ORM, Redis, Database Sharding, Indexing) Tj",
+        "/F1 9.5 Tf",
+        "0 -14 Td",
+        "(Tools & DevOps: ) Tj",
+        "/F2 9.5 Tf",
+        "(Docker, Git, GitHub, Postman, Linux, Vite, React) Tj",
+        // Section: CORE PROJECTS & WORK
+        "/F1 12 Tf",
+        "0.1 0.1 0.4 rg",
+        "0 -25 Td",
+        "(FEATURED PROJECTS & ARCHITECTURE) Tj",
+        "0 0 0 rg",
+        "/F1 10.5 Tf",
+        "0 -16 Td",
+        "(1. Distributed High-Throughput REST API (NestJS + PostgreSQL + Redis)) Tj",
+        "/F2 9.5 Tf",
+        "0 -13 Td",
+        "(- Engineered modular domain-driven architecture utilizing NestJS dependency injection.) Tj",
+        "0 -13 Td",
+        "(- Integrated Prisma ORM with connection pooling and query optimization for low latency.) Tj",
+        "0 -13 Td",
+        "(- Implemented horizontal PostgreSQL sharding logic for scalable multi-tenant workloads.) Tj",
+        "/F1 10.5 Tf",
+        "0 -18 Td",
+        "(2. Asynchronous Queue Processing System (BullMQ + Redis)) Tj",
+        "/F2 9.5 Tf",
+        "0 -13 Td",
+        "(- Designed fault-tolerant background worker pipeline handling concurrent job queues.) Tj",
+        "0 -13 Td",
+        "(- Added automatic retry strategies, exponential backoff, dead-letter queues, and telemetry.) Tj",
+        "/F1 10.5 Tf",
+        "0 -18 Td",
+        "(3. Modern Developer Portfolio & Web Platform (React + Vite + TailwindCSS)) Tj",
+        "/F2 9.5 Tf",
+        "0 -13 Td",
+        "(- Built performant responsive frontend showcasing engineering projects and backend systems.) Tj",
+        // Section: EDUCATION
+        "/F1 12 Tf",
+        "0.1 0.1 0.4 rg",
+        "0 -25 Td",
+        "(EDUCATION) Tj",
+        "0 0 0 rg",
+        "/F1 9.5 Tf",
+        "0 -16 Td",
+        "(Master of Computer Applications (MCA)) Tj",
+        "/F2 9.5 Tf",
+        "( - Visvesvaraya Technological University (VTU) | Graduated 2022) Tj",
+        "/F1 9.5 Tf",
+        "0 -14 Td",
+        "(Bachelor of Computer Applications (BCA)) Tj",
+        "/F2 9.5 Tf",
+        "( - Gulbarga University | Graduated 2020) Tj",
+        "ET"
+      ];
+
+      const streamContent = streamLines.join("\n");
+      const streamLen = streamContent.length;
+
+      let pdf = "%PDF-1.4\n";
+      const objOffsets = {};
+
+      function addObj(id, content) {
+        objOffsets[id] = pdf.length;
+        pdf += `${id} 0 obj\n${content}\nendobj\n`;
+      }
+
+      addObj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+      addObj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+      addObj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>");
+      addObj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+      addObj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+      addObj(6, `<< /Length ${streamLen} >>\nstream\n${streamContent}\nendstream`);
+
+      const xrefOffset = pdf.length;
+      pdf += "xref\n";
+      pdf += "0 7\n";
+      pdf += "0000000000 65535 f \n";
+      for (let i = 1; i <= 6; i++) {
+        const offsetStr = String(objOffsets[i]).padStart(10, "0");
+        pdf += `${offsetStr} 00000 n \n`;
+      }
+
+      pdf += "trailer\n";
+      pdf += "<< /Size 7 /Root 1 0 R >>\n";
+      pdf += "startxref\n";
+      pdf += `${xrefOffset}\n`;
+      pdf += "%%EOF\n";
+
+      return pdf;
+    }
+
+    const pdfString = buildResumePDF();
+    document.getElementById("output").value = pdfString;
+
+    const blob = new Blob([pdfString], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    document.getElementById("preview").src = url;
+  </script>
+</body>
+</html>

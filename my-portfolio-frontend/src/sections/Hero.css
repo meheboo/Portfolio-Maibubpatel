@@ -1,0 +1,224 @@
+.hero {
+  min-height: calc(100vh - 80px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3rem;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 4rem 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .hero {
+    padding: 6rem 2rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero {
+    flex-direction: column;
+    text-align: left;
+    padding-top: 3rem;
+  }
+}
+
+.hero-content {
+  flex: 1;
+  max-width: 38rem;
+}
+
+.hero-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: #818cf8;
+  margin-bottom: 1.25rem;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: 2.5rem;
+  line-height: 1.2;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 1.5rem 0;
+  letter-spacing: -0.025em;
+}
+
+@media (min-width: 640px) {
+  .hero h1 {
+    font-size: 3.25rem;
+  }
+}
+
+.hero h1 span {
+  color: #818cf8;
+}
+
+.hero-description {
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: #94a3b8;
+  margin-bottom: 2rem;
+}
+
+.hero-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.hero-primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #6366f1;
+  color: #ffffff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 10px 20px -10px rgba(99, 102, 241, 0.5);
+}
+
+.hero-primary-button:hover {
+  background-color: #4f46e5;
+  transform: translateY(-2px);
+}
+
+.hero-resume-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(129, 140, 248, 0.4);
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.hero-resume-button:hover {
+  background-color: rgba(99, 102, 241, 0.28);
+  color: #ffffff;
+  border-color: #818cf8;
+  transform: translateY(-2px);
+}
+
+.hero-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #334155;
+  background-color: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.hero-secondary-button:hover {
+  border-color: #818cf8;
+  color: #ffffff;
+  background-color: #1e293b;
+}
+
+.hero-social-button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #334155;
+  background-color: #0f172a;
+  color: #94a3b8;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.hero-social-button:hover {
+  border-color: #818cf8;
+  color: #ffffff;
+  background-color: #1e293b;
+  transform: translateY(-2px);
+}
+
+.hero-technologies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.hero-technologies span {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #94a3b8;
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+}
+
+.hero-card {
+  width: 100%;
+  max-width: 28rem;
+  background-color: #0b1120;
+  border: 1px solid #1e293b;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.hero-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+  font-size: 0.8125rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #1e293b;
+}
+
+.hero-card-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background-color: #10b981;
+  display: inline-block;
+}
+
+.hero-card pre {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #cbd5e1;
+  overflow-x: auto;
+}
+
+.hero-code-purple {
+  color: #c084fc;
+}
+
+.hero-code-green {
+  color: #4ade80;
+}
+
+.hero-code-orange {
+  color: #fb923c;
+}
+
+.hero-card-footer {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #1e293b;
+  font-size: 0.8125rem;
+  color: #64748b;
+}

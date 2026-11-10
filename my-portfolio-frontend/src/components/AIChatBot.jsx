@@ -1,23 +1,31 @@
 import React, { useState, useRef, useEffect } from "react";
-import { processUserMessage, INITIAL_SUGGESTIONS } from "../services/aiChatService";
+import { INITIAL_SUGGESTIONS } from "../services/aiChatService";
+import { apiClient } from "../services/apiClient";
 
-const INITIAL_MESSAGES = [
-  {
-    id: "welcome",
-    sender: "ai",
-    text: "Hi! 👋 I'm your **Technical Interview Assistant**.\n\nI'm here to help you prepare for software engineering interviews, answer coding questions, and explain core programming concepts across:\n- **Frontend**: React.js 19 (Fiber, Hooks, Virtual DOM, SSR), Web Performance\n- **JavaScript**: Event Loop, Closures, Prototypal Inheritance, Promises, Async/Await\n- **Backend**: Node.js (Libuv, Streams), Express.js (Middlewares), NestJS (DI, IoC, Guards, Pipes)\n- **Databases & Caching**: PostgreSQL vs NoSQL, ACID, Indexing, Sharding, Redis Caching, BullMQ\n- **API & System Design**: REST Idempotency, JWT Auth, Microservices, SOLID Principles\n\nWhat technical topic or interview question would you like to practice today?",
-    timestamp: "Just now",
-    actions: [
-      { type: "prompt", prompt: "How does React Fiber reconciliation work, and when to use useMemo vs useCallback?", label: "⚛️ React Fiber & Hooks" },
-      { type: "prompt", prompt: "Explain the JavaScript Event Loop, Microtasks, and Macrotasks with an interview-ready answer.", label: "⚡ JS Event Loop" },
-      { type: "prompt", prompt: "How does Node.js handle concurrency with a single thread and libuv?", label: "🟢 Node.js Concurrency" },
-      { type: "prompt", prompt: "Explain Dependency Injection, IoC, and the Request Lifecycle in NestJS.", label: "🦅 NestJS Architecture" },
-      { type: "prompt", prompt: "Compare PostgreSQL vs MongoDB for high-scale systems and explain B-Tree database indexing.", label: "🗄️ SQL vs NoSQL & Indexing" },
-      { type: "prompt", prompt: "What makes an API idempotent, and how should JWT authentication with refresh tokens work?", label: "🛡️ REST Idempotency & JWT" },
-      { type: "prompt", prompt: "Explain the SOLID principles in software engineering with practical examples.", label: "🎯 SOLID Principles" },
-    ],
-  },
-];
+const SESSION_STORAGE_KEY = "portfolio_ai_chat_session_id";
+
+function getOrCreateSessionId() {
+  try {
+    let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!sessionId) {
+      sessionId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+    }
+    return sessionId;
+  } catch {
+    return `sess_${Date.now()}`;
+  }
+}
+
+const CLEAN_WELCOME_MESSAGE = {
+  id: "welcome",
+  sender: "intro",
+  text: "Hello! I'm your AI Technical Interview Assistant. Ask me anything about software development, programming, coding interviews, or system design.",
+  timestamp: "Just now",
+};
 
 /**
  * Modern AI Vector Icon
@@ -120,13 +128,14 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
   const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
   const setIsOpen = isControlled ? controlledSetIsOpen : setInternalIsOpen;
 
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState([CLEAN_WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasUnread, setHasUnread] = useState(true);
   const [toastMessage, setToastMessage] = useState("");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const textareaRef = useRef(null);
 
   // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
@@ -137,9 +146,53 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
     if (isOpen) {
       scrollToBottom();
       setHasUnread(false);
-      setTimeout(() => inputRef.current?.focus(), 250);
+      setTimeout(() => textareaRef.current?.focus(), 250);
     }
   }, [isOpen, messages, isTyping]);
+
+  // Load conversation history from backend on initial mount
+  useEffect(() => {
+    const fetchHistory = async () => {
+      const sessionId = getOrCreateSessionId();
+      try {
+        const res = await apiClient.get(`/api/chat/history/${sessionId}`);
+        if (res && res.success && Array.isArray(res.history) && res.history.length > 0) {
+          const restoredMessages = [CLEAN_WELCOME_MESSAGE];
+          for (const item of res.history) {
+            if (item.userMsg) {
+              restoredMessages.push({
+                id: `hist-user-${item.id}`,
+                sender: "user",
+                text: item.userMsg,
+                timestamp: item.createdAt
+                  ? new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  : "Earlier",
+              });
+            }
+            if (item.botReply) {
+              restoredMessages.push({
+                id: `hist-ai-${item.id}`,
+                sender: "ai",
+                text: item.botReply,
+                timestamp: item.createdAt
+                  ? new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  : "Earlier",
+              });
+            }
+          }
+          setMessages(restoredMessages);
+        }
+      } catch (err) {
+        console.warn("Could not load chat history from backend:", err);
+      } finally {
+        setHistoryLoaded(true);
+      }
+    };
+
+    if (!historyLoaded) {
+      fetchHistory();
+    }
+  }, [historyLoaded]);
 
   // Keyboard accessibility: Escape key closes modal
   useEffect(() => {
@@ -161,6 +214,8 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
     const query = (textToSend || input).trim();
     if (!query || isTyping) return;
 
+    const sessionId = getOrCreateSessionId();
+
     const userMessage = {
       id: `user-${Date.now()}`,
       sender: "user",
@@ -173,30 +228,53 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
     setIsTyping(true);
 
     try {
-      const response = await processUserMessage(query);
+      // POST directly to NestJS backend -> Ollama AI Integration
+      const backendRes = await apiClient.post(
+        "/api/chat/message",
+        {
+          sessionId,
+          message: query,
+        },
+        { timeout: 120000 }
+      );
 
-      const aiMessage = {
-        id: `ai-${Date.now()}`,
-        sender: "ai",
-        text: response.text,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        actions: response.actions || [],
-      };
+      if (backendRes && backendRes.text) {
+        const aiMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          text: backendRes.text,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          actions: backendRes.actions || [],
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      } else {
+        throw new Error("No response text received from server.");
+      }
+    } catch (apiError) {
+      console.error("AI chat error via backend:", apiError);
+      const errorMessage =
+        apiError?.data?.message ||
+        apiError?.message ||
+        "Unable to generate response from AI Assistant. Please verify connection and retry.";
 
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch {
       setMessages((prev) => [
         ...prev,
         {
           id: `ai-err-${Date.now()}`,
           sender: "ai",
-          text: "I encountered a brief hiccup. Please ask again or feel free to check the portfolio sections directly!",
-          timestamp: "Just now",
+          isError: true,
+          failedQuery: query,
+          text: `⚠️ **Generation Failed**: ${errorMessage}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleRetry = (query) => {
+    handleSendMessage(query);
   };
 
   const handleActionClick = (action) => {
@@ -217,8 +295,25 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
   };
 
   const handleClearChat = () => {
-    setMessages(INITIAL_MESSAGES);
-    showToast("Chat history cleared");
+    // Generate fresh session ID to start clean session
+    try {
+      const newSessionId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem(SESSION_STORAGE_KEY, newSessionId);
+    } catch {
+      // ignore
+    }
+    setMessages([CLEAN_WELCOME_MESSAGE]);
+    showToast("Chat conversation cleared");
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   // Helper to format basic markdown-style text safely, with code block support
@@ -287,11 +382,27 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
           </h4>
         );
       }
+      // Header 2
+      if (line.startsWith("## ")) {
+        return (
+          <h3 key={idx} className="font-bold text-slate-900 dark:text-white text-sm mt-2 mb-1">
+            {line.replace("## ", "")}
+          </h3>
+        );
+      }
+      // Header 1
+      if (line.startsWith("# ")) {
+        return (
+          <h2 key={idx} className="font-extrabold text-slate-900 dark:text-white text-base mt-2 mb-1">
+            {line.replace("# ", "")}
+          </h2>
+        );
+      }
       // Bullet point
-      if (line.startsWith("- ")) {
+      if (line.startsWith("- ") || line.startsWith("* ")) {
         return (
           <li key={idx} className="ml-3 list-disc text-slate-700 dark:text-slate-300 text-xs my-0.5 leading-relaxed">
-            {formatInlineText(line.replace("- ", ""))}
+            {formatInlineText(line.replace(/^[-*]\s/, ""))}
           </li>
         );
       }
@@ -487,7 +598,7 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
         role="dialog"
         aria-label="Technical Interview Assistant"
         aria-hidden={!isOpen}
-        className={`fixed bottom-20 right-3.5 sm:bottom-24 sm:right-6 z-50 flex flex-col w-[395px] max-w-[calc(100vw-1.75rem)] h-[580px] max-h-[calc(100vh-6.5rem)] rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl overflow-hidden origin-bottom-right transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) ai-chat-window shadow-2xl ${
+        className={`fixed bottom-20 right-3.5 sm:bottom-24 sm:right-6 z-50 flex flex-col w-[410px] max-w-[calc(100vw-1.75rem)] h-[590px] max-h-[calc(100vh-6.5rem)] rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl overflow-hidden origin-bottom-right transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) ai-chat-window shadow-2xl ${
           isOpen
             ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
             : "opacity-0 scale-90 translate-y-6 pointer-events-none"
@@ -551,7 +662,7 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
           </div>
         </div>
 
-        {/* Quick Starter Suggestions Bar */}
+        {/* Quick Starter Suggestions Bar - clickable prompt shortcuts */}
         <div className="border-b border-slate-100 dark:border-slate-850 bg-white/70 dark:bg-slate-900/70 px-3 py-2 overflow-x-auto no-scrollbar flex items-center gap-1.5 shrink-0">
           {INITIAL_SUGGESTIONS.map((item) => (
             <button
@@ -568,59 +679,105 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
 
         {/* Chat Messages Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
-            >
-              <div
-                className={`relative max-w-[86%] rounded-2xl p-3.5 shadow-2xs ${
-                  msg.sender === "user"
-                    ? "btn-aurora-primary text-white rounded-br-xs"
-                    : "bg-slate-50 dark:bg-slate-800/70 border border-slate-200/90 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 rounded-bl-xs"
-                }`}
-              >
-                {msg.sender === "user" ? (
-                  <p className="text-xs font-medium leading-relaxed">{msg.text}</p>
-                ) : (
-                  <div className="space-y-1">
-                    {renderFormattedText(msg.text)}
-
-                    {/* Interactive Action Chips for AI Response */}
-                    {msg.actions && msg.actions.length > 0 && (
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/70 flex flex-wrap gap-1.5">
-                        {msg.actions.map((act, actIdx) => (
-                          <button
-                            key={actIdx}
-                            type="button"
-                            onClick={() => handleActionClick(act)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 shadow-2xs transition-all hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:border-indigo-400 dark:hover:border-indigo-600 hover:scale-102 active:scale-95 cursor-pointer"
-                          >
-                            <span>{act.label}</span>
-                          </button>
-                        ))}
+          {messages.map((msg) => {
+            // Clean introductory UI message styling
+            if (msg.sender === "intro") {
+              return (
+                <div key={msg.id} className="flex flex-col items-center my-2 text-center">
+                  <div className="max-w-[92%] rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-gradient-to-b from-indigo-50/70 to-purple-50/30 dark:from-indigo-950/30 dark:to-slate-900/60 p-4 shadow-xs">
+                    <div className="flex justify-center mb-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                        <ModernAIIcon className="w-5 h-5" />
                       </div>
-                    )}
+                    </div>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 font-medium leading-relaxed">
+                      {msg.text}
+                    </p>
                   </div>
-                )}
+                  <span className="mt-1 px-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                    Introductory Assistant
+                  </span>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
+              >
+                <div
+                  className={`relative max-w-[88%] rounded-2xl p-3.5 shadow-2xs ${
+                    msg.sender === "user"
+                      ? "btn-aurora-primary text-white rounded-br-xs"
+                      : msg.isError
+                      ? "bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-bl-xs"
+                      : "bg-slate-50 dark:bg-slate-800/70 border border-slate-200/90 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 rounded-bl-xs"
+                  }`}
+                >
+                  {msg.sender === "user" ? (
+                    <p className="text-xs font-medium leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {renderFormattedText(msg.text)}
+
+                      {/* Error retry button */}
+                      {msg.isError && msg.failedQuery && (
+                        <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRetry(msg.failedQuery)}
+                            disabled={isTyping}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 text-[11px] font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
+                          >
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                            </svg>
+                            <span>Retry Question</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Interactive Action Chips for AI Response */}
+                      {msg.actions && msg.actions.length > 0 && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/70 flex flex-wrap gap-1.5">
+                          {msg.actions.map((act, actIdx) => (
+                            <button
+                              key={actIdx}
+                              type="button"
+                              onClick={() => handleActionClick(act)}
+                              disabled={isTyping}
+                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 shadow-2xs transition-all hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:border-indigo-400 dark:hover:border-indigo-600 hover:scale-102 active:scale-95 cursor-pointer disabled:opacity-50"
+                            >
+                              <span>{act.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <span className="mt-1 px-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                  {msg.timestamp}
+                </span>
               </div>
+            );
+          })}
 
-              <span className="mt-1 px-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                {msg.timestamp}
-              </span>
-            </div>
-          ))}
-
-          {/* Typing Indicator */}
+          {/* Typing Indicator & Loading animation */}
           {isTyping && (
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">
                 <ModernAIIcon className="w-4 h-4" />
               </div>
-              <div className="flex items-center gap-1 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 px-3.5 py-2.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 px-3.5 py-2.5 shadow-2xs">
                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                <span className="ml-1 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 animate-pulse">
+                  Generating...
+                </span>
               </div>
             </div>
           )}
@@ -628,7 +785,7 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input & Dispatch Footer */}
+        {/* Input & Dispatch Footer - Multiline textarea with Enter to send and Shift+Enter for new line */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -637,33 +794,41 @@ export default function AIChatBot({ isOpen: controlledIsOpen, setIsOpen: control
           className="border-t border-slate-100 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 p-3 backdrop-blur-md shrink-0"
         >
           <div className="relative flex items-center">
-            <input
-              ref={inputRef}
-              type="text"
+            <textarea
+              ref={textareaRef}
+              rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Ask a technical interview or coding question..."
               disabled={isTyping}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900 pl-4 pr-12 py-3 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all focus:border-indigo-600 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-600/10 dark:focus:ring-indigo-400/20"
+              className="w-full resize-none rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900 pl-4 pr-12 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all focus:border-indigo-600 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-600/10 dark:focus:ring-indigo-400/20 max-h-24"
             />
 
             <button
               type="submit"
               disabled={!input.trim() || isTyping}
-              className="absolute right-1.5 flex h-8 w-8 items-center justify-center rounded-xl btn-aurora-primary disabled:opacity-40 transition-transform active:scale-95 cursor-pointer"
-              title="Send Message"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-xl btn-aurora-primary disabled:opacity-40 transition-transform active:scale-95 cursor-pointer"
+              title={isTyping ? "Generating answer..." : "Send Message (Enter)"}
               aria-label="Send Message"
             >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
+              {isTyping ? (
+                <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              )}
             </button>
           </div>
 
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 px-1 font-mono">
-            <span>Technical Interview & Coding Assistant</span>
-            <span>Press Enter ↵</span>
+            <span>Powered by OpenAI & NestJS</span>
+            <span>Enter ↵ to send • Shift+Enter newline</span>
           </div>
         </form>
       </div>

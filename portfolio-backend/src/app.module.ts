@@ -8,12 +8,15 @@ import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
 import mailConfig from './config/mail.config';
+import aiConfig from './config/ai.config';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { ContactController } from './controllers/contact.controller';
 import { ChatController } from './controllers/chat.controller';
+import { HealthController } from './controllers/health.controller';
 import { ContactService } from './services/contact.service';
 import { ChatService } from './services/chat.service';
+import { OpenAIService } from './services/openai.service';
 import { MailService } from './services/mail.service';
 import { QueueService, CONTACT_QUEUE } from './services/queue.service';
 import { ContactRepository } from './repositories/contact.repository';
@@ -25,7 +28,7 @@ import { LoggerMiddleware } from './middleware/logger.middleware';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, redisConfig, mailConfig],
+      load: [appConfig, databaseConfig, redisConfig, mailConfig, aiConfig],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     BullModule.forRoot({
@@ -41,10 +44,11 @@ import { LoggerMiddleware } from './middleware/logger.middleware';
     }),
     PrismaModule,
   ],
-  controllers: [ContactController, ChatController],
+  controllers: [ContactController, ChatController, HealthController],
   providers: [
     ContactService,
     ChatService,
+    OpenAIService,
     MailService,
     QueueService,
     ContactRepository,

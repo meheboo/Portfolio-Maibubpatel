@@ -2,11 +2,12 @@ import { useState } from "react";
 import { EMAIL_ADDRESS, PHONE_NUMBER, GITHUB_URL, LINKEDIN_URL } from "../constants";
 import { TechIcons } from "../components/TechIcons";
 import SpotlightCard from "../components/SpotlightCard";
+import { apiClient } from "../services/apiClient";
 
 const initialForm = {
   name: "",
   email: "",
-  subject: "Full-Time Opportunity",
+  subject: "Full-Time Backend Role",
   message: "",
 };
 
@@ -21,30 +22,66 @@ function Contact() {
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (!form.name || !form.email || !form.message) {
-      setStatus({ state: "error", message: "Please fill in all required fields." });
-      return;
-    }
-
-    setStatus({ state: "sending", message: "Opening your email application..." });
-
-    // Open mailto link as direct email dispatch
+  function handleMailtoFallback(customMessage = "") {
     const mailto = `mailto:${EMAIL_ADDRESS}?subject=${encodeURIComponent(
       `[Portfolio Inquiry] ${form.subject} from ${form.name}`
     )}&body=${encodeURIComponent(
       `Name: ${form.name}\nEmail: ${form.email}\nSubject: ${form.subject}\n\nMessage:\n${form.message}`
     )}`;
+    window.open(mailto, "_blank");
+    if (customMessage) {
+      setStatus({ state: "idle", message: customMessage });
+    }
+  }
 
-    setTimeout(() => {
-      window.open(mailto, "_blank");
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const trimmedName = form.name.trim();
+    const trimmedEmail = form.email.trim();
+    const trimmedMessage = form.message.trim();
+
+    if (!trimmedName || !trimmedEmail || !trimmedMessage) {
+      setStatus({ state: "error", message: "Please fill in all required fields." });
+      return;
+    }
+
+    // Basic email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setStatus({ state: "error", message: "Please provide a valid email address." });
+      return;
+    }
+
+    setStatus({ state: "sending", message: "Submitting your message to the server..." });
+
+    try {
+      const response = await apiClient.post("/api/contact", {
+        name: trimmedName,
+        email: trimmedEmail,
+        subject: form.subject,
+        message: trimmedMessage,
+      });
+
       setStatus({
         state: "success",
-        message: "Your default email application has opened with your message ready to send!",
+        message:
+          response?.message ||
+          "Your message has been received! I will get back to you within 24-48 hours.",
       });
       setForm(initialForm);
-    }, 500);
+    } catch (err) {
+      // Graceful fallback to mailto if server is unreachable or reports an error
+      const isNetwork = err?.isNetworkError;
+      const errMsg = isNetwork
+        ? "Backend server is currently offline. You can dispatch directly via your email client."
+        : (err?.message || "Failed to submit inquiry. Please try again.");
+
+      setStatus({
+        state: "error",
+        message: errMsg,
+        allowMailto: true,
+      });
+    }
   }
 
   function copyToClipboard(text, type) {
@@ -237,7 +274,16 @@ function Contact() {
                           : "border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
                       }`}
                     >
-                      {status.message}
+                      <p>{status.message}</p>
+                      {status.allowMailto && (
+                        <button
+                          type="button"
+                          onClick={() => handleMailtoFallback("Opened email client fallback.")}
+                          className="mt-2.5 inline-flex items-center gap-1.5 underline underline-offset-2 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold cursor-pointer"
+                        >
+                          ✉️ Click here to open your email client instead →
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -315,7 +361,7 @@ function Contact() {
                   className="btn-aurora-primary group flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-semibold disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer mt-5"
                 >
                   <TechIcons.Email className="h-4 w-4 icon-interactive" />
-                  <span>{status.state === "sending" ? "Opening Email App..." : "Send Message via Email"}</span>
+                  <span>{status.state === "sending" ? "Sending Inquiry..." : "Submit Inquiry"}</span>
                   <span className="arrow-slide font-bold">→</span>
                 </button>
               </form>

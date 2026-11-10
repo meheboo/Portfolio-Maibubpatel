@@ -17,13 +17,14 @@ export class QueueService {
             'send-contact-email',
             { inquiryId, ...data },
             {
-                attempts: 3,           // retry 3 times on failure
+                jobId: `contact-email-${inquiryId}`, // Prevent duplicate email jobs for same inquiry
+                attempts: 3,                         // retry 3 times on failure
                 backoff: {
                     type: 'exponential',
-                    delay: 2000,         // 2s, 4s, 8s
+                    delay: 2000,                     // 2s, 4s, 8s
                 },
                 removeOnComplete: true,
-                removeOnFail: false,   // keep failed jobs for debugging
+                removeOnFail: false,                 // keep failed jobs for debugging
             },
         );
         this.logger.log(`Job ${job.id} queued for inquiry ${inquiryId}`);

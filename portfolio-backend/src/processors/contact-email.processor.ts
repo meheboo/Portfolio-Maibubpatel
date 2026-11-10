@@ -17,18 +17,26 @@ export class ContactEmailProcessor {
   @Process('send-contact-email')
   async handleSendEmail(job: Job) {
     const { inquiryId, name, email, subject, message } = job.data;
-    this.logger.log(`Processing email job ${job.id} for inquiry ${inquiryId}`);
+    const attempt = job.attemptsMade + 1;
+    this.logger.log(`Processing email job ${job.id} for inquiry ${inquiryId} (Attempt ${attempt}/${job.opts.attempts || 3})`);
 
     try {
       await this.mailService.sendContactNotification({
-        name, email, subject, message,
+        name,
+        email,
+        subject,
+        message,
       });
       await this.contactRepository.updateStatus(inquiryId, 'sent');
-      this.logger.log(`Email sent successfully for inquiry ${inquiryId}`);
-    } catch (error) {
-      await this.contactRepository.updateStatus(inquiryId, 'failed');
-      this.logger.error(`Email failed for ${inquiryId}: ${error.message}`);
-      throw error; // BullMQ will retry
+      this.logger.log(`Email delivered successfully for inquiry ${inquiryId}`);
+    } catch (error: any) {
+      if (attempt >= (job.opts.attempts || 3)) {
+        await this.contactRepository.updateStatus(inquiryId, 'failed');
+        this.logger.error(`Email permanently failed after ${attempt} attempts for inquiry ${inquiryId}: ${error.message}`);
+      } else {
+        this.logger.warn(`Email attempt ${attempt} failed for inquiry ${inquiryId}: ${error.message}. Scheduling retry...`);
+      }
+      throw error; // Let Bull retry with backoff
     }
   }
 }
